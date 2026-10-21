@@ -197,19 +197,31 @@ table.parallel.no-refs td.ref, table.parallel.no-refs th.ref { padding: 0; font-
 // text ("three hundred and 3 days") are almost never mistaken for verses.
 // ---------------------------------------------------------------------------
 
-const HEADING_RE = /^((?:[1-3] ?)?[A-Za-z][A-Za-z .']{0,28}?)\s+(\d{1,3})$/;
-const MARKER_RE = /(?:((?:[1-3] ?)?[A-Z][a-z]+\.?) )?(\d{1,3}):(\d{1,3})(?!\d)|(?<![\w:,\-–])(\d{1,3})(?=[  ]?[^\s\d,.:;)\-–—%])/g;
+// Text copied from Bible websites (Bible Gateway, YouVersion…) carries extras:
+// footnote/cross-reference markers, section headings, "Read full chapter",
+// then footnotes, the version name and copyright text after the passage.
+const NOISE_RE = /\[[a-z]{1,2}\]|\([A-Z]{1,2}\)|\b(?:Read full chapter|Leer (?:el )?cap[ií]tulo completo)\b/g;
+const STOP_RE = /^(?:footnotes|cross references|notas al pie|notas|referencias cruzadas|read full chapter|leer (?:el )?cap[ií]tulo completo|copyright|©)/i;
+const VERSION_LINE_RE = /^[^:]{3,60}?\s\(([A-Z][A-Z0-9-]{1,9})\)$/;                          // "Reina-Valera 1960 (RVR1960)"
+const REF_LINE_RE = /^(?:[1-3] ?)?\p{L}[\p{L} .']*?\s+(\d{1,3}):\d{1,3}(?:\s*[-–]\s*\d{1,3})?(?:\s+\(?([A-Z][A-Z0-9-]{1,9})\)?)?$/u;  // "Juan 3:1-16 RVR1960"
+const HEADING_RE = /^((?:[1-3] ?)?\p{L}[\p{L} .']{0,28}?)\s+(\d{1,3})(?:\s*[-–]\s*\d{1,3})?$/u;  // "Génesis 2", "Psalm 23", "Génesis 1-2"
+const MARKER_RE = /(?:((?:[1-3] ?)?\p{Lu}\p{Ll}+\.?) )?(\d{1,3}):(\d{1,3})(?!\d)|(?<![\p{L}\p{N}_:,\-–])(\d{1,3})(?=[  ]?[^\s\d,.:;)\-–—%])/gu;
+const VERSE_START_RE = /^[  ]?["'“‘(\[«¿¡]*\p{Lu}/u;
+const SENTENCE_END_RE = /[.!?"'”’»)\]]\s*$/;
+const PUNCT_END_RE = /[.,;:!?"'”’»)\]]\s*$/;
 
-const normBook = s => s.toLowerCase().replace(/[^a-z0-9]/g, '').replace(/s$/, '');
+const normBook = s => s.toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g, '').replace(/s$/, '');
 
 function parseVerses(text) {
   const verses = new Map();      // "b|c|v" -> { b, c, v, text }
   const books = [];              // book index -> name as written
   let b = 0, bookNorm = null, c = 1, v = 0, cur = null;
+  let chapterKnown = false;      // false = the text never said which chapter it is
+  let version = '';              // e.g. "RVR1960", if the pasted text names it
 
   const setBook = name => {
     const n = normBook(name);
-    if (n === 'chapter' || n === bookNorm) return;
+    if (n === 'chapter' || n === 'capitulo' || n === bookNorm) return;
     if (bookNorm !== null || verses.size) b++;
     bookNorm = n;
     books[b] = name.trim();
@@ -225,25 +237,53 @@ function parseVerses(text) {
     if (cur && s) cur.text = cur.text ? cur.text + ' ' + s : s;
   };
 
-  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  lines.forEach((line, i) => {
+  const lines = text.replace(NOISE_RE, '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
 
-    // "Genesis 2", "Chapter 2", "Psalm 23" on a line of their own
+  // The version's name and a "Juan 3:16-17 RVR1960" style reference can sit
+  // anywhere, often after the passage, so look for them first
+  let refChapter = 0;
+  for (const line of lines) {
+    const ref = line.match(REF_LINE_RE), ver = line.match(VERSION_LINE_RE);
+    if (ref && !refChapter) refChapter = +ref[1];
+    if (!version) version = (ref && ref[2]) || (ver && ver[1]) || '';
+  }
+
+  // The first number followed by words after position `pos` of line `i`
+  const nextNumber = (i, pos) => {
+    const rest = (lines[i].slice(pos) + ' ' + lines.slice(i + 1, i + 4).join(' '));
+    const m = rest.match(/(?:^|[\s.,;:!?"'”’»)\]])(\d{1,3})[  ]?["'“‘(\[«¿¡]*\p{L}/u);
+    return m ? +m[1] : null;
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // What follows the passage: footnotes, copyright, the version's name
+    if (STOP_RE.test(line)) { if (verses.size) break; continue; }
+    if (VERSION_LINE_RE.test(line)) { if (verses.size) break; continue; }
+    if (REF_LINE_RE.test(line)) continue;
+
+    // "Génesis 2", "Chapter 2", "Psalm 23" on a line of their own
     const h = line.match(HEADING_RE);
-    if (h && !/[.,;:!?]$/.test(h[1])) {
-      setBook(h[1]); c = +h[2]; v = 0; cur = null;
-      return;
+    if (h && +h[2] <= 150 && !/[.,;:!?]$/.test(h[1])) {
+      setBook(h[1]); c = +h[2]; v = 0; cur = null; chapterKnown = true;
+      continue;
     }
     // A bare number on its own line: the next verse, or a chapter number
     // (two bare numbers in a row = chapter number, then verse number)
     if (/^\d{1,3}$/.test(line)) {
       const n = +line;
       const nextIsNumber = /^\d{1,3}$/.test(lines[i + 1] || '');
-      if (nextIsNumber) { c = n; v = 0; cur = null; }
+      if (nextIsNumber) { c = n; v = 0; cur = null; chapterKnown = true; }
       else if (n > v && (v === 0 || n <= v + 3)) start(c, n);
       else if (n === 1 && v > 1) start(c + 1, 1);
-      else { c = n; v = 0; cur = null; }
-      return;
+      else { c = n; v = 0; cur = null; chapterKnown = true; }
+      continue;
+    }
+    // A section heading ("Jesús y Nicodemo"): short, no closing punctuation,
+    // and the next line starts with a verse number
+    if (!/^\d/.test(line) && !/^\d{1,3}$/.test(lines[i - 1] || '') && line.length <= 80 && !PUNCT_END_RE.test(line) && /^\d/.test(lines[i + 1] || '')) {
+      continue;
     }
 
     let last = 0, m;
@@ -252,19 +292,25 @@ function parseVerses(text) {
       let nc, nv;
       if (m[2]) {                                  // explicit 1:1
         nc = +m[2]; nv = +m[3];
-        if (m[1] && !/^(and|the|then|but|for|in|chapter)$/i.test(m[1])) setBook(m[1]);
+        if (m[1] && !/^(and|the|then|but|for|in|chapter|y|el|la|en|cap[ií]tulo)$/i.test(m[1])) setBook(m[1]);
+        chapterKnown = true;
       } else {                                     // plain number
         const n = +m[4];
         const atStart = m.index === 0;
         const before = line.slice(0, m.index);
-        const afterSentence = /[.!?"'”’)\]]\s*$/.test(before);
+        const afterSentence = SENTENCE_END_RE.test(before);
         // mid-line, a verse number follows punctuation or starts a capitalised
         // word, so "and 3 days" is not taken as verse 3
-        const looksLikeVerse = atStart || /[.,;:!?"'”’)\]]\s*$/.test(before) ||
-          /^[ \u00a0]?["'“‘(\[]?[A-Z]/.test(line.slice(m.index + m[4].length));
-        if (n === v + 1 && looksLikeVerse) { nc = c; nv = n; }
+        const looksLikeVerse = atStart || PUNCT_END_RE.test(before) || VERSE_START_RE.test(line.slice(m.index + m[4].length));
+        const chapterStart = (atStart || afterSentence) && looksLikeVerse;
+        if (v === 0 && n > 1 && looksLikeVerse && nextNumber(i, m.index + m[0].length) === 2) {
+          // Bible Gateway prints the chapter number where verse 1 would be
+          nc = n; nv = 1; chapterKnown = true;
+        }
+        else if (n === v + 1 && looksLikeVerse) { nc = c; nv = n; }
         else if (atStart && n > v && (v === 0 || n <= v + 3)) { nc = c; nv = n; }
-        else if (n === 1 && v > 1 && (atStart || afterSentence)) { nc = c + 1; nv = 1; }
+        else if (n === 1 && v > 1 && chapterStart) { nc = c + 1; nv = 1; }
+        else if (n === c + 1 && v > 1 && chapterStart && nextNumber(i, m.index + m[0].length) === 2) { nc = n; nv = 1; }
         else continue;
       }
       add(line.slice(last, m.index));
@@ -272,8 +318,22 @@ function parseVerses(text) {
       last = m.index + m[0].length;
     }
     add(line.slice(last));
-  });
-  return { verses, books };
+  }
+  const result = { verses, books, chapterKnown, version };
+  // Only a reference line said which chapter this is
+  return !chapterKnown && refChapter ? { ...shiftChapters(result, refChapter), chapterKnown: true } : result;
+}
+
+// Pasted text that never says its chapter starts at "chapter 1". When the other
+// side is a chosen passage, move it to that passage's chapters so they line up.
+function shiftChapters(P, firstChapter) {
+  if (P.chapterKnown || firstChapter === 1) return P;
+  const verses = new Map();
+  for (const x of P.verses.values()) {
+    const y = { ...x, c: x.c + firstChapter - 1 };
+    verses.set(y.b + '|' + y.c + '|' + y.v, y);
+  }
+  return { ...P, verses };
 }
 
 function parseLines(text) {
@@ -353,6 +413,7 @@ const esc = s => s.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '
 const fmt = n => n.toLocaleString();
 
 let notesCol = false;   // set by render(); adds an empty column for handwriting
+const detected = { L: '', R: '' };   // version named inside pasted text, e.g. "RVR1960"
 
 function cell(text) {
   return text ? '<td>' + esc(text) + '</td>' : '<td class="missing">—</td>';
@@ -362,7 +423,7 @@ const notesCell = () => notesCol ? '<td class="notes"></td>' : '';
 function columnTitle(side) {
   const typed = $('title' + side).value.trim();
   const v = versionOf($('src' + side).value);
-  return typed || (v ? v.name : side === 'L' ? 'Left' : 'Right');
+  return typed || (v ? v.name : detected[side] || (side === 'L' ? 'Left' : 'Right'));
 }
 
 function header() {
@@ -451,6 +512,13 @@ async function render() {
       return;
     }
     if (id !== renderId) return;   // a newer render has started
+    detected.L = libL ? '' : L.version;
+    detected.R = libR ? '' : R.version;
+    if (libL || libR) {
+      const from = +$('chFrom').value;
+      if (!libL) L = shiftChapters(L, from);
+      if (!libR) R = shiftChapters(R, from);
+    }
     $('countL').textContent = hasL ? fmt(L.verses.size) + ' verses' + (libL ? '' : ' found') : '';
     $('countR').textContent = hasR ? fmt(R.verses.size) + ' verses' + (libR ? '' : ' found') : '';
     result = renderVerses(L, R);
