@@ -10,12 +10,13 @@
 :root {
   --bg: #f7f4ee; --panel: #fffdf9; --ink: #1f1c18; --muted: #6d665c;
   --line: #e2dbcf; --accent: #7a4b1f; --accent-ink: #fff; --warn-bg: #fbeee4; --warn: #a3471f;
-  --fs: 11pt;
+  --rule: #c5ced9; --fs: 11pt;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #1b1916; --panel: #24211d; --ink: #ece6dc; --muted: #a39b8f;
     --line: #3a352e; --accent: #d39a5c; --accent-ink: #1b1916; --warn-bg: #3a2a20; --warn: #f0a77a;
+    --rule: #39414b;
   }
 }
 * { box-sizing: border-box; }
@@ -36,6 +37,13 @@ header.app p { margin: 0; color: var(--muted); }
   height: 240px; resize: vertical; padding: 10px; border: 1px solid var(--line); border-radius: 8px;
   background: var(--panel); color: var(--ink); font: 14px/1.45 Georgia, serif; }
 .side .count { font-size: 13px; color: var(--muted); min-height: 1.3em; }
+.side select, .passage select { font: inherit; font-size: 14px; padding: 7px 8px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+.side .picked { padding: 14px; display: flex; align-items: center; justify-content: center; text-align: center;
+  border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); font-size: 14px; }
+.passage { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 0 0 16px; }
+.passage label { font-size: 13px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+[hidden] { display: none !important; }
 .doc-title { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; }
 .doc-title label, .side label { font-size: 13px; color: var(--muted); }
 
@@ -66,6 +74,14 @@ table.parallel td.ref { color: var(--muted); font-size: 0.8em; padding-top: 0.45
 table.parallel td.missing { background: var(--warn-bg); color: var(--warn); font-style: italic; }
 table.parallel tr.chapter td { font: 700 calc(var(--fs) * 1.15)/1.3 Georgia, serif; padding: 14px 10px 6px;
   border-bottom: 1px solid var(--ink); }
+/* room for handwritten notes */
+table.parallel col.notes { width: 32%; }
+table.parallel td.notes { border-left: 1px solid var(--line); }
+table.parallel.ruled td.notes {
+  background-image: linear-gradient(to bottom, transparent calc(100% - 1px), var(--rule) calc(100% - 1px));
+  background-size: 100% 2em;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+table.parallel.space tr:not(.chapter) td { padding-bottom: calc(var(--fs) * 4.5); }
 table.parallel.no-refs col.ref { width: 0; }
 table.parallel.no-refs td.ref, table.parallel.no-refs th.ref { padding: 0; font-size: 0; }
 .empty { color: var(--muted); text-align: center; padding: 40px 0; }
@@ -76,7 +92,7 @@ table.parallel.no-refs td.ref, table.parallel.no-refs th.ref { padding: 0; font-
 
 @media print {
   @page { @bottom-center { content: counter(page) " / " counter(pages); font: 9pt Georgia, serif; color: #777; } }
-  :root { --ink: #000; --muted: #555; --line: #ccc; --panel: #fff; --warn-bg: #fff; --warn: #777; }
+  :root { --ink: #000; --muted: #555; --line: #ccc; --panel: #fff; --warn-bg: #fff; --warn: #777; --rule: #c5ced9; }
   body { background: #fff; }
   .no-print { display: none !important; }
   .wrap { max-width: none; padding: 0; }
@@ -92,27 +108,37 @@ table.parallel.no-refs td.ref, table.parallel.no-refs th.ref { padding: 0; font-
   <div class="no-print">
     <header class="app">
       <h1>Bible Side by Side</h1>
-      <p>Paste two versions, line them up verse by verse, and save as a PDF.</p>
+      <p>Pick two versions (or paste your own), line them up verse by verse, and save as a PDF.</p>
     </header>
 
     <div class="doc-title">
       <label for="docTitle">Document title (optional, printed at the top)</label>
-      <input id="docTitle" placeholder="e.g. Genesis — KJV and WEB">
+      <input id="docTitle" placeholder="e.g. Genesis — KJV and BSB">
     </div>
 
     <div class="inputs">
       <div class="side">
-        <label for="titleL">Left version</label>
-        <input id="titleL" placeholder="e.g. KJV">
+        <label for="srcL">Left version</label>
+        <select id="srcL"><option value="paste">Paste my own text</option></select>
+        <input id="titleL" placeholder="Column title, e.g. NIV">
         <textarea id="textL" placeholder="Paste the first version here…"></textarea>
+        <div class="picked" id="pickedL" hidden></div>
         <div class="count" id="countL"></div>
       </div>
       <div class="side">
-        <label for="titleR">Right version</label>
-        <input id="titleR" placeholder="e.g. NIV">
+        <label for="srcR">Right version</label>
+        <select id="srcR"><option value="paste">Paste my own text</option></select>
+        <input id="titleR" placeholder="Column title, e.g. ESV">
         <textarea id="textR" placeholder="Paste the second version here…"></textarea>
+        <div class="picked" id="pickedR" hidden></div>
         <div class="count" id="countR"></div>
       </div>
+    </div>
+
+    <div class="passage" id="passage" hidden>
+      <label>Book <select id="book"></select></label>
+      <label>Chapters <select id="chFrom"></select></label>
+      <label>to <select id="chTo"></select></label>
     </div>
 
     <div class="toolbar">
@@ -128,8 +154,17 @@ table.parallel.no-refs td.ref, table.parallel.no-refs th.ref { padding: 0; font-
           <option>9</option><option>10</option><option selected>11</option><option>12</option><option>13</option><option>14</option>
         </select>
       </label>
+      <label>Room for notes
+        <select id="notes">
+          <option value="none">None</option>
+          <option value="column">Notes column</option>
+          <option value="space">Space under each verse</option>
+          <option value="both">Both</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="ruled"> Lines in notes column</label>
       <label>Paper
-        <select id="paper"><option value="letter">Letter</option><option value="A4">A4</option></select>
+        <select id="paper"><option value="letter">Letter</option><option value="A4">A4</option><option value="ipad">iPad (fills the screen)</option></select>
       </label>
       <label>Orientation
         <select id="orient"><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select>
@@ -250,6 +285,66 @@ function parseLines(text) {
 }
 
 // ---------------------------------------------------------------------------
+// Bible library (public-domain versions stored next to this page in data/)
+// ---------------------------------------------------------------------------
+
+const BOOKS = ['Genesis', 'Exodus', 'Leviticus', 'Numbers', 'Deuteronomy', 'Joshua', 'Judges', 'Ruth',
+  '1 Samuel', '2 Samuel', '1 Kings', '2 Kings', '1 Chronicles', '2 Chronicles', 'Ezra', 'Nehemiah', 'Esther',
+  'Job', 'Psalms', 'Proverbs', 'Ecclesiastes', 'Song of Solomon', 'Isaiah', 'Jeremiah', 'Lamentations',
+  'Ezekiel', 'Daniel', 'Hosea', 'Joel', 'Amos', 'Obadiah', 'Jonah', 'Micah', 'Nahum', 'Habakkuk',
+  'Zephaniah', 'Haggai', 'Zechariah', 'Malachi', 'Matthew', 'Mark', 'Luke', 'John', 'Acts', 'Romans',
+  '1 Corinthians', '2 Corinthians', 'Galatians', 'Ephesians', 'Philippians', 'Colossians',
+  '1 Thessalonians', '2 Thessalonians', '1 Timothy', '2 Timothy', 'Titus', 'Philemon', 'Hebrews', 'James',
+  '1 Peter', '2 Peter', '1 John', '2 John', '3 John', 'Jude', 'Revelation'];
+
+let versions = [];                 // from data/versions.json
+const bookCache = new Map();       // "kjv/43" -> promise of [[verse, …], …]
+
+function loadBook(vid, book) {
+  const key = vid + '/' + book;
+  if (!bookCache.has(key)) {
+    const p = fetch('data/' + key + '.json').then(r => {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    });
+    p.catch(() => bookCache.delete(key));   // let a failed download be retried
+    bookCache.set(key, p);
+  }
+  return bookCache.get(key);
+}
+
+// Same shape as parseVerses() so pasted and library text line up the same way
+async function libraryPassage(vid) {
+  const book = +$('book').value, from = +$('chFrom').value, to = +$('chTo').value;
+  const chapters = await loadBook(vid, book);
+  const verses = new Map();
+  for (let c = from; c <= to; c++) {
+    (chapters[c - 1] || []).forEach((text, i) => {
+      if (text) verses.set('0|' + c + '|' + (i + 1), { b: 0, c, v: i + 1, text });
+    });
+  }
+  return { verses, books: [BOOKS[book - 1]] };
+}
+
+const versionOf = id => versions.find(v => v.id === id);
+
+function fillChapters() {
+  const vid = [$('srcL').value, $('srcR').value].find(versionOf);
+  const count = vid ? versionOf(vid).chapters[+$('book').value - 1] : 1;
+  for (const sel of [$('chFrom'), $('chTo')]) {
+    const keep = +sel.value;
+    sel.innerHTML = Array.from({ length: count }, (_, i) => '<option>' + (i + 1) + '</option>').join('');
+    sel.value = String(Math.min(keep || 1, count));
+  }
+  if (+$('chTo').value < +$('chFrom').value) $('chTo').value = $('chFrom').value;
+}
+
+function passageLabel() {
+  const book = BOOKS[+$('book').value - 1], from = $('chFrom').value, to = $('chTo').value;
+  return book + ' ' + (from === to ? from : from + '–' + to);
+}
+
+// ---------------------------------------------------------------------------
 // Rendering
 // ---------------------------------------------------------------------------
 
@@ -257,31 +352,40 @@ const $ = id => document.getElementById(id);
 const esc = s => s.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
 const fmt = n => n.toLocaleString();
 
+let notesCol = false;   // set by render(); adds an empty column for handwriting
+
 function cell(text) {
   return text ? '<td>' + esc(text) + '</td>' : '<td class="missing">—</td>';
 }
+const notesCell = () => notesCol ? '<td class="notes"></td>' : '';
+
+function columnTitle(side) {
+  const typed = $('title' + side).value.trim();
+  const v = versionOf($('src' + side).value);
+  return typed || (v ? v.name : side === 'L' ? 'Left' : 'Right');
+}
 
 function header() {
-  const l = esc($('titleL').value.trim() || 'Left');
-  const r = esc($('titleR').value.trim() || 'Right');
-  return '<thead><tr><th class="ref"></th><th>' + l + '</th><th>' + r + '</th></tr></thead>';
+  return '<thead><tr><th class="ref"></th><th>' + esc(columnTitle('L')) + '</th><th>' + esc(columnTitle('R')) +
+    '</th>' + (notesCol ? '<th>Notes</th>' : '') + '</tr></thead>';
 }
 
 function renderVerses(L, R) {
   const keys = new Set([...L.verses.keys(), ...R.verses.keys()]);
   const sorted = [...keys].map(k => k.split('|').map(Number)).sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
+  const span = notesCol ? 4 : 3;
 
   let html = '', prevChapter = null, missing = 0;
   for (const [b, c, v] of sorted) {
     const key = b + '|' + c + '|' + v;
     if (b + '|' + c !== prevChapter) {
       const book = L.books[b] || R.books[b];
-      html += '<tr class="chapter"><td colspan="3">' + esc(book ? book + ' ' + c : 'Chapter ' + c) + '</td></tr>';
+      html += '<tr class="chapter"><td colspan="' + span + '">' + esc(book ? book + ' ' + c : 'Chapter ' + c) + '</td></tr>';
       prevChapter = b + '|' + c;
     }
     const l = L.verses.get(key), r = R.verses.get(key);
     if (!l || !r) missing++;
-    html += '<tr><td class="ref">' + c + ':' + v + '</td>' + cell(l && l.text) + cell(r && r.text) + '</tr>';
+    html += '<tr><td class="ref">' + c + ':' + v + '</td>' + cell(l && l.text) + cell(r && r.text) + notesCell() + '</tr>';
   }
   return { html, rows: sorted.length, missing };
 }
@@ -290,70 +394,114 @@ function renderLines(L, R) {
   const n = Math.max(L.length, R.length);
   let html = '';
   for (let i = 0; i < n; i++) {
-    html += '<tr><td class="ref">' + (i + 1) + '</td>' + cell(L[i]) + cell(R[i]) + '</tr>';
+    html += '<tr><td class="ref">' + (i + 1) + '</td>' + cell(L[i]) + cell(R[i]) + notesCell() + '</tr>';
   }
   return { html, rows: n, missing: Math.abs(L.length - R.length) };
 }
 
-function render() {
-  const tL = $('textL').value, tR = $('textR').value;
-  const mode = $('mode').value;
-  const status = $('status');
-  $('printTitle').textContent = $('docTitle').value.trim();
-  document.title = $('docTitle').value.trim() || 'Bible Side by Side';
+function updateSides() {
+  let anyLibrary = false;
+  for (const side of ['L', 'R']) {
+    const v = versionOf($('src' + side).value);
+    anyLibrary = anyLibrary || !!v;
+    $('text' + side).hidden = !!v;
+    $('picked' + side).hidden = !v;
+    if (v) $('picked' + side).textContent = v.name + ' · ' + v.lang;
+    $('title' + side).placeholder = v ? 'Column title (default: ' + v.name + ')' : 'Column title, e.g. ' + (side === 'L' ? 'NIV' : 'ESV');
+  }
+  $('passage').hidden = !anyLibrary;
+  $('mode').disabled = anyLibrary;   // library text always lines up by verse
+  $('ruled').disabled = !['column', 'both'].includes($('notes').value);
+}
 
-  if (!tL.trim() && !tR.trim()) {
-    $('out').innerHTML = '<p class="empty no-print">Paste text into both boxes and the side-by-side view appears here.</p>';
+let renderId = 0;
+async function render() {
+  const id = ++renderId;
+  const status = $('status');
+  updateSides();
+
+  const libL = versionOf($('srcL').value), libR = versionOf($('srcR').value);
+  const tL = $('textL').value, tR = $('textR').value;
+  const hasL = libL || tL.trim(), hasR = libR || tR.trim();
+  const mode = libL || libR ? 'verse' : $('mode').value;
+  const notes = $('notes').value;
+  notesCol = notes === 'column' || notes === 'both';
+
+  const title = $('docTitle').value.trim() || (libL || libR ? passageLabel() : '');
+  $('printTitle').textContent = title;
+  document.title = title || 'Bible Side by Side';
+
+  if (!hasL && !hasR) {
+    $('out').innerHTML = '<p class="empty no-print">Choose a version or paste text on each side and the side-by-side view appears here.</p>';
     $('countL').textContent = $('countR').textContent = status.textContent = '';
     return;
   }
 
-  let result, label;
+  let result, label, warn = '';
   if (mode === 'verse') {
-    const L = parseVerses(tL), R = parseVerses(tR);
-    $('countL').textContent = tL.trim() ? fmt(L.verses.size) + ' verses found' : '';
-    $('countR').textContent = tR.trim() ? fmt(R.verses.size) + ' verses found' : '';
+    let L, R;
+    try {
+      if (libL || libR) status.textContent = 'Loading ' + passageLabel() + '…';
+      [L, R] = await Promise.all([
+        libL ? libraryPassage(libL.id) : parseVerses(tL),
+        libR ? libraryPassage(libR.id) : parseVerses(tR),
+      ]);
+    } catch (e) {
+      if (id === renderId) status.innerHTML = '<span class="warn">Couldn’t load the Bible text (' + esc(e.message) + '). Check your connection and try again.</span>';
+      return;
+    }
+    if (id !== renderId) return;   // a newer render has started
+    $('countL').textContent = hasL ? fmt(L.verses.size) + ' verses' + (libL ? '' : ' found') : '';
+    $('countR').textContent = hasR ? fmt(R.verses.size) + ' verses' + (libR ? '' : ' found') : '';
     result = renderVerses(L, R);
     label = 'verses';
-    if ((tL.trim() && L.verses.size === 0) || (tR.trim() && R.verses.size === 0)) {
-      status.innerHTML = '<span class="warn">No verse numbers were found in one of the texts. Try “Line up by: Line / paragraph”.</span>';
+    if ((!libL && tL.trim() && !L.verses.size) || (!libR && tR.trim() && !R.verses.size)) {
+      warn = 'No verse numbers were found in a pasted text. Try “Line up by: Line / paragraph”.';
     }
   } else {
     const L = parseLines(tL), R = parseLines(tR);
-    $('countL').textContent = tL.trim() ? fmt(L.length) + ' lines' : '';
-    $('countR').textContent = tR.trim() ? fmt(R.length) + ' lines' : '';
+    $('countL').textContent = hasL ? fmt(L.length) + ' lines' : '';
+    $('countR').textContent = hasR ? fmt(R.length) + ' lines' : '';
     result = renderLines(L, R);
     label = 'rows';
   }
 
-  $('out').innerHTML = '<table class="parallel' + ($('showRefs').checked ? '' : ' no-refs') + '">' +
-    '<colgroup><col class="ref"><col><col></colgroup>' + header() + '<tbody>' + result.html + '</tbody></table>';
+  const classes = ['parallel'];
+  if (!$('showRefs').checked) classes.push('no-refs');
+  if (notesCol && $('ruled').checked) classes.push('ruled');
+  if (notes === 'space' || notes === 'both') classes.push('space');
+  $('out').innerHTML = '<table class="' + classes.join(' ') + '">' +
+    '<colgroup><col class="ref"><col><col>' + (notesCol ? '<col class="notes">' : '') + '</colgroup>' +
+    header() + '<tbody>' + result.html + '</tbody></table>';
 
-  if (!status.querySelector('.warn') || mode !== 'verse' || result.rows) {
-    status.innerHTML = fmt(result.rows) + ' ' + label + ' side by side' + (result.missing
+  status.innerHTML = warn ? '<span class="warn">' + warn + '</span>' :
+    fmt(result.rows) + ' ' + label + ' side by side' + (result.missing
       ? ' · <span class="warn">' + fmt(result.missing) + ' only in one version (shaded)</span>'
       : ' · everything matched');
-  }
 }
 
+const PAPER = { letter: ['8.5in', '11in'], A4: ['210mm', '297mm'], ipad: ['210mm', '280mm'] };   // iPad screens are 4:3
 function applyPageStyle() {
   document.documentElement.style.setProperty('--fs', $('fontSize').value + 'pt');
-  $('page-style').textContent = '@page { size: ' + $('paper').value + ' ' + $('orient').value + '; margin: 14mm 12mm 16mm; }';
+  const [w, h] = PAPER[$('paper').value] || PAPER.letter;
+  const size = $('orient').value === 'landscape' ? h + ' ' + w : w + ' ' + h;
+  $('page-style').textContent = '@page { size: ' + size + '; margin: 14mm 12mm 16mm; }';
 }
 
 // ---------------------------------------------------------------------------
 // Remember what was typed (this browser only; nothing is sent anywhere)
 // ---------------------------------------------------------------------------
 
-const FIELDS = ['docTitle', 'titleL', 'titleR', 'textL', 'textR', 'mode', 'showRefs', 'fontSize', 'paper', 'orient'];
+const FIELDS = ['docTitle', 'srcL', 'srcR', 'titleL', 'titleR', 'textL', 'textR', 'book', 'chFrom', 'chTo',
+  'mode', 'showRefs', 'fontSize', 'notes', 'ruled', 'paper', 'orient'];
 function save() {
   for (const id of FIELDS) {
     const el = $(id);
     try { localStorage.setItem('bsbs.' + id, el.type === 'checkbox' ? String(el.checked) : el.value); } catch (e) {}
   }
 }
-function load() {
-  for (const id of FIELDS) {
+function load(ids) {
+  for (const id of ids) {
     let v = null;
     try { v = localStorage.getItem('bsbs.' + id); } catch (e) {}
     if (v === null) continue;
@@ -369,35 +517,57 @@ function scheduleRender() {
 }
 
 for (const id of FIELDS) {
-  $(id).addEventListener('input', () => { applyPageStyle(); scheduleRender(); });
+  $(id).addEventListener('input', () => {
+    if (id === 'book' || id === 'srcL' || id === 'srcR') fillChapters();
+    if (id === 'chFrom' && +$('chTo').value < +$('chFrom').value) $('chTo').value = $('chFrom').value;
+    if (id === 'chTo' && +$('chTo').value < +$('chFrom').value) $('chFrom').value = $('chTo').value;
+    applyPageStyle();
+    scheduleRender();
+  });
 }
 
-$('exportPdf').addEventListener('click', () => { render(); window.print(); });
+$('exportPdf').addEventListener('click', async () => { await render(); window.print(); });
 
 $('sample').addEventListener('click', () => {
-  $('docTitle').value = 'Genesis — KJV and WEB';
-  $('titleL').value = 'King James Version';
-  $('titleR').value = 'World English Bible';
-  $('textL').value = `Genesis 1
-1 In the beginning God created the heaven and the earth.
-2 And the earth was without form, and void; and darkness was upon the face of the deep. And the Spirit of God moved upon the face of the waters.
-3 And God said, Let there be light: and there was light.
-4 And God saw the light, that it was good: and God divided the light from the darkness.
-5 And God called the light Day, and the darkness he called Night. And the evening and the morning were the first day.
-
-Genesis 2
-1 Thus the heavens and the earth were finished, and all the host of them.`;
-  $('textR').value = `Genesis 1
-1 In the beginning, God created the heavens and the earth. 2 The earth was formless and empty. Darkness was on the surface of the deep and God’s Spirit was hovering over the surface of the waters. 3 God said, “Let there be light,” and there was light. 4 God saw the light, and saw that it was good. God divided the light from the darkness. 5 God called the light “day”, and the darkness he called “night”. There was evening and there was morning, the first day.
-
-Genesis 2
-1 The heavens, the earth, and all their vast array were finished.`;
+  $('docTitle').value = '';
+  $('titleL').value = $('titleR').value = '';
+  if (versionOf('kjv') && versionOf('bsb')) {
+    $('srcL').value = 'kjv'; $('srcR').value = 'bsb';
+    $('book').value = '43'; fillChapters();
+    $('chFrom').value = '3'; $('chTo').value = '3';
+  } else {
+    $('srcL').value = $('srcR').value = 'paste';
+    $('textL').value = 'Genesis 1\n1 In the beginning God created the heaven and the earth.\n2 And the earth was without form, and void; and darkness was upon the face of the deep.';
+    $('textR').value = 'Genesis 1\n1 In the beginning, God created the heavens and the earth. 2 The earth was formless and empty. Darkness was on the surface of the deep.';
+  }
   render(); save();
 });
 
-load();
-applyPageStyle();
-render();
+async function start() {
+  $('book').innerHTML = BOOKS.map((b, i) => '<option value="' + (i + 1) + '">' + b + '</option>').join('');
+  try {
+    const r = await fetch('data/versions.json');
+    if (r.ok) versions = await r.json();
+  } catch (e) { /* opened without the library (e.g. straight from disk): paste still works */ }
+
+  const groups = {};
+  for (const v of versions) (groups[v.lang] = groups[v.lang] || []).push(v);
+  const opts = Object.entries(groups).map(([lang, vs]) => '<optgroup label="' + esc(lang) + '">' +
+    vs.map(v => '<option value="' + v.id + '">' + esc(v.name) + '</option>').join('') + '</optgroup>').join('');
+  for (const side of ['L', 'R']) $('src' + side).insertAdjacentHTML('beforeend', opts);
+
+  load(['srcL', 'srcR', 'book']);
+  for (const side of ['L', 'R']) if (!$('src' + side).value) $('src' + side).value = 'paste';
+  if (!$('book').value) $('book').value = '1';
+  fillChapters();
+  load(FIELDS.filter(id => !['srcL', 'srcR', 'book'].includes(id)));
+  for (const side of ['L', 'R']) if (!$('src' + side).value) $('src' + side).value = 'paste';
+  fillChapters();
+
+  applyPageStyle();
+  render();
+}
+start();
 </script>
 </body>
 </html>
