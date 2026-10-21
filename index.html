@@ -82,6 +82,12 @@ table.parallel.ruled td.notes {
   background-size: 100% 2em;
   -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 table.parallel.space tr:not(.chapter) td { padding-bottom: calc(var(--fs) * 4.5); }
+#doc.margins { padding-left: var(--side); padding-right: var(--side); }   /* blank writing space both sides */
+#doc.margins table.parallel col.ref { width: 2.6em; }
+#doc.margins table.parallel td, #doc.margins table.parallel th { padding-left: 6px; padding-right: 6px; }
+#doc.margins table.parallel td.ref { padding-right: 2px; }
+table.parallel.no-lines td, table.parallel.no-lines th,
+table.parallel.no-lines tr.chapter td { border: none; }
 table.parallel.no-refs col.ref { width: 0; }
 table.parallel.no-refs td.ref, table.parallel.no-refs th.ref { padding: 0; font-size: 0; }
 .empty { color: var(--muted); text-align: center; padding: 40px 0; }
@@ -97,6 +103,7 @@ table.parallel.no-refs td.ref, table.parallel.no-refs th.ref { padding: 0; font-
   .no-print { display: none !important; }
   .wrap { max-width: none; padding: 0; }
   #doc { padding: 0; }
+  #doc.margins { padding: 0 var(--side); }
   thead { display: table-header-group; }   /* repeat column titles on every page */
   tr { break-inside: avoid; }
   tr.chapter { break-after: avoid; }
@@ -154,15 +161,23 @@ table.parallel.no-refs td.ref, table.parallel.no-refs th.ref { padding: 0; font-
           <option>9</option><option>10</option><option selected>11</option><option>12</option><option>13</option><option>14</option>
         </select>
       </label>
-      <label>Room for notes
+      <label>Writing space
         <select id="notes">
           <option value="none">None</option>
-          <option value="column">Notes column</option>
-          <option value="space">Space under each verse</option>
-          <option value="both">Both</option>
+          <option value="margins">Blank margins left and right</option>
+          <option value="column">Notes column on the right</option>
         </select>
       </label>
-      <label><input type="checkbox" id="ruled"> Lines in notes column</label>
+      <label id="marginWidthLabel">Each margin
+        <select id="marginWidth">
+          <option value="20">⅕ of the page</option>
+          <option value="25">¼ of the page</option>
+          <option value="33.33" selected>⅓ of the page</option>
+        </select>
+      </label>
+      <label id="ruledLabel"><input type="checkbox" id="ruled"> Ruled notes column</label>
+      <label><input type="checkbox" id="spaceUnder"> Space under each verse</label>
+      <label><input type="checkbox" id="lines" checked> Lines between verses</label>
       <label>Paper
         <select id="paper"><option value="letter">Letter</option><option value="A4">A4</option><option value="ipad">iPad (fills the screen)</option></select>
       </label>
@@ -472,7 +487,8 @@ function updateSides() {
   }
   $('passage').hidden = !anyLibrary;
   $('mode').disabled = anyLibrary;   // library text always lines up by verse
-  $('ruled').disabled = !['column', 'both'].includes($('notes').value);
+  $('ruledLabel').hidden = $('notes').value !== 'column';
+  $('marginWidthLabel').hidden = $('notes').value !== 'margins';
 }
 
 let renderId = 0;
@@ -486,7 +502,9 @@ async function render() {
   const hasL = libL || tL.trim(), hasR = libR || tR.trim();
   const mode = libL || libR ? 'verse' : $('mode').value;
   const notes = $('notes').value;
-  notesCol = notes === 'column' || notes === 'both';
+  notesCol = notes === 'column';
+  $('doc').classList.toggle('margins', notes === 'margins');
+  $('doc').style.setProperty('--side', $('marginWidth').value + '%');
 
   const title = $('docTitle').value.trim() || (libL || libR ? passageLabel() : '');
   $('printTitle').textContent = title;
@@ -537,7 +555,8 @@ async function render() {
   const classes = ['parallel'];
   if (!$('showRefs').checked) classes.push('no-refs');
   if (notesCol && $('ruled').checked) classes.push('ruled');
-  if (notes === 'space' || notes === 'both') classes.push('space');
+  if ($('spaceUnder').checked) classes.push('space');
+  if (!$('lines').checked) classes.push('no-lines');
   $('out').innerHTML = '<table class="' + classes.join(' ') + '">' +
     '<colgroup><col class="ref"><col><col>' + (notesCol ? '<col class="notes">' : '') + '</colgroup>' +
     header() + '<tbody>' + result.html + '</tbody></table>';
@@ -561,7 +580,7 @@ function applyPageStyle() {
 // ---------------------------------------------------------------------------
 
 const FIELDS = ['docTitle', 'srcL', 'srcR', 'titleL', 'titleR', 'textL', 'textR', 'book', 'chFrom', 'chTo',
-  'mode', 'showRefs', 'fontSize', 'notes', 'ruled', 'paper', 'orient'];
+  'mode', 'showRefs', 'fontSize', 'notes', 'marginWidth', 'ruled', 'spaceUnder', 'lines', 'paper', 'orient'];
 function save() {
   for (const id of FIELDS) {
     const el = $(id);
@@ -629,6 +648,13 @@ async function start() {
   if (!$('book').value) $('book').value = '1';
   fillChapters();
   load(FIELDS.filter(id => !['srcL', 'srcR', 'book'].includes(id)));
+  // Older versions had "space" and "both" in the notes menu
+  let oldNotes = null;
+  try { oldNotes = localStorage.getItem('bsbs.notes'); } catch (e) {}
+  if (oldNotes === 'space' || oldNotes === 'both') {
+    $('notes').value = oldNotes === 'both' ? 'column' : 'none';
+    $('spaceUnder').checked = true;
+  }
   for (const side of ['L', 'R']) if (!$('src' + side).value) $('src' + side).value = 'paste';
   fillChapters();
 
