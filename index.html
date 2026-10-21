@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Bible Side by Side</title>
+<style id="page-style">@page { size: letter portrait; margin: 14mm 12mm 16mm; }</style>
+<style>
+:root {
+  --bg: #f7f4ee; --panel: #fffdf9; --ink: #1f1c18; --muted: #6d665c;
+  --line: #e2dbcf; --accent: #7a4b1f; --accent-ink: #fff; --warn-bg: #fbeee4; --warn: #a3471f;
+  --fs: 11pt;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1b1916; --panel: #24211d; --ink: #ece6dc; --muted: #a39b8f;
+    --line: #3a352e; --accent: #d39a5c; --accent-ink: #1b1916; --warn-bg: #3a2a20; --warn: #f0a77a;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+.wrap { max-width: 1200px; margin: 0 auto; padding: 0 16px; }
+
+header.app { padding: 28px 0 8px; }
+header.app h1 { font: 400 28px/1.2 Georgia, "Times New Roman", serif; margin: 0 0 4px; }
+header.app p { margin: 0; color: var(--muted); }
+
+.inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px 0; }
+.side { display: flex; flex-direction: column; gap: 8px; }
+.side input, .doc-title input {
+  font: 600 15px/1.4 inherit; font-family: inherit; padding: 8px 10px; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--panel); color: var(--ink); }
+.side textarea {
+  height: 240px; resize: vertical; padding: 10px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel); color: var(--ink); font: 14px/1.45 Georgia, serif; }
+.side .count { font-size: 13px; color: var(--muted); min-height: 1.3em; }
+.doc-title { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; }
+.doc-title label, .side label { font-size: 13px; color: var(--muted); }
+
+.toolbar { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line);
+  padding: 10px 0; display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+.toolbar label { font-size: 13px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+.toolbar select { font: inherit; font-size: 14px; padding: 4px 6px; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+.toolbar .spacer { flex: 1; }
+button { font: inherit; font-size: 14px; padding: 8px 14px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.status { font-size: 13px; color: var(--muted); padding: 10px 0 0; }
+.status .warn { color: var(--warn); }
+
+/* ---------- the side-by-side document ---------- */
+#doc { padding: 16px 0 60px; }
+#doc .print-title { font: 400 22px/1.25 Georgia, serif; text-align: center; margin: 0 0 12px; }
+#doc .print-title:empty { display: none; }
+table.parallel { width: 100%; border-collapse: collapse; table-layout: fixed;
+  font: var(--fs)/1.45 Georgia, "Times New Roman", serif; background: var(--panel); }
+table.parallel col.ref { width: 3.4em; }
+table.parallel th { font: 600 calc(var(--fs) * 0.95)/1.3 Georgia, serif; text-align: left;
+  padding: 8px 10px; border-bottom: 2px solid var(--ink); }
+table.parallel td { vertical-align: top; padding: 4px 10px; border-bottom: 1px solid var(--line); }
+table.parallel td.ref { color: var(--muted); font-size: 0.8em; padding-top: 0.45em; text-align: right;
+  padding-right: 6px; white-space: nowrap; }
+table.parallel td.missing { background: var(--warn-bg); color: var(--warn); font-style: italic; }
+table.parallel tr.chapter td { font: 700 calc(var(--fs) * 1.15)/1.3 Georgia, serif; padding: 14px 10px 6px;
+  border-bottom: 1px solid var(--ink); }
+table.parallel.no-refs col.ref { width: 0; }
+table.parallel.no-refs td.ref, table.parallel.no-refs th.ref { padding: 0; font-size: 0; }
+.empty { color: var(--muted); text-align: center; padding: 40px 0; }
+
+@media (max-width: 700px) {
+  .inputs { grid-template-columns: 1fr; }
+}
+
+@media print {
+  @page { @bottom-center { content: counter(page) " / " counter(pages); font: 9pt Georgia, serif; color: #777; } }
+  :root { --ink: #000; --muted: #555; --line: #ccc; --panel: #fff; --warn-bg: #fff; --warn: #777; }
+  body { background: #fff; }
+  .no-print { display: none !important; }
+  .wrap { max-width: none; padding: 0; }
+  #doc { padding: 0; }
+  thead { display: table-header-group; }   /* repeat column titles on every page */
+  tr { break-inside: avoid; }
+  tr.chapter { break-after: avoid; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="no-print">
+    <header class="app">
+      <h1>Bible Side by Side</h1>
+      <p>Paste two versions, line them up verse by verse, and save as a PDF.</p>
+    </header>
+
+    <div class="doc-title">
+      <label for="docTitle">Document title (optional, printed at the top)</label>
+      <input id="docTitle" placeholder="e.g. Genesis — KJV and WEB">
+    </div>
+
+    <div class="inputs">
+      <div class="side">
+        <label for="titleL">Left version</label>
+        <input id="titleL" placeholder="e.g. KJV">
+        <textarea id="textL" placeholder="Paste the first version here…"></textarea>
+        <div class="count" id="countL"></div>
+      </div>
+      <div class="side">
+        <label for="titleR">Right version</label>
+        <input id="titleR" placeholder="e.g. NIV">
+        <textarea id="textR" placeholder="Paste the second version here…"></textarea>
+        <div class="count" id="countR"></div>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <label>Line up by
+        <select id="mode">
+          <option value="verse">Verse numbers</option>
+          <option value="line">Line / paragraph</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="showRefs" checked> Verse numbers</label>
+      <label>Text size
+        <select id="fontSize">
+          <option>9</option><option>10</option><option selected>11</option><option>12</option><option>13</option><option>14</option>
+        </select>
+      </label>
+      <label>Paper
+        <select id="paper"><option value="letter">Letter</option><option value="A4">A4</option></select>
+      </label>
+      <label>Orientation
+        <select id="orient"><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select>
+      </label>
+      <span class="spacer"></span>
+      <button id="sample" type="button">Try a sample</button>
+      <button id="exportPdf" class="primary" type="button">Export PDF</button>
+    </div>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div id="doc">
+    <h2 class="print-title" id="printTitle"></h2>
+    <div id="out"><p class="empty no-print">Paste text into both boxes and the side-by-side view appears here.</p></div>
+  </div>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Verse detection
+//
+// Pasted Bible text comes in many shapes:
+//   "Genesis 1" heading lines, then "1 In the beginning…" one verse per line
+//   one long paragraph with inline numbers: "…the earth. 2 And the earth…"
+//   explicit references: "Genesis 1:1 In the beginning…" or "1:1 In the…"
+//   numbers glued to the word, copied from superscripts: "1In the beginning"
+//
+// A plain number is only accepted as a verse marker when it is the verse we
+// expect next (or close to it at the start of a line), so numbers inside the
+// text ("three hundred and 3 days") are almost never mistaken for verses.
+// ---------------------------------------------------------------------------
+
+const HEADING_RE = /^((?:[1-3] ?)?[A-Za-z][A-Za-z .']{0,28}?)\s+(\d{1,3})$/;
+const MARKER_RE = /(?:((?:[1-3] ?)?[A-Z][a-z]+\.?) )?(\d{1,3}):(\d{1,3})(?!\d)|(?<![\w:,\-–])(\d{1,3})(?=[  ]?[^\s\d,.:;)\-–—%])/g;
+
+const normBook = s => s.toLowerCase().replace(/[^a-z0-9]/g, '').replace(/s$/, '');
+
+function parseVerses(text) {
+  const verses = new Map();      // "b|c|v" -> { b, c, v, text }
+  const books = [];              // book index -> name as written
+  let b = 0, bookNorm = null, c = 1, v = 0, cur = null;
+
+  const setBook = name => {
+    const n = normBook(name);
+    if (n === 'chapter' || n === bookNorm) return;
+    if (bookNorm !== null || verses.size) b++;
+    bookNorm = n;
+    books[b] = name.trim();
+  };
+  const start = (nc, nv) => {
+    c = nc; v = nv;
+    const key = b + '|' + c + '|' + v;
+    cur = verses.get(key) || { b, c, v, text: '' };
+    verses.set(key, cur);
+  };
+  const add = s => {
+    s = s.replace(/\s+/g, ' ').trim();
+    if (cur && s) cur.text = cur.text ? cur.text + ' ' + s : s;
+  };
+
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  lines.forEach((line, i) => {
+
+    // "Genesis 2", "Chapter 2", "Psalm 23" on a line of their own
+    const h = line.match(HEADING_RE);
+    if (h && !/[.,;:!?]$/.test(h[1])) {
+      setBook(h[1]); c = +h[2]; v = 0; cur = null;
+      return;
+    }
+    // A bare number on its own line: the next verse, or a chapter number
+    // (two bare numbers in a row = chapter number, then verse number)
+    if (/^\d{1,3}$/.test(line)) {
+      const n = +line;
+      const nextIsNumber = /^\d{1,3}$/.test(lines[i + 1] || '');
+      if (nextIsNumber) { c = n; v = 0; cur = null; }
+      else if (n > v && (v === 0 || n <= v + 3)) start(c, n);
+      else if (n === 1 && v > 1) start(c + 1, 1);
+      else { c = n; v = 0; cur = null; }
+      return;
+    }
+
+    let last = 0, m;
+    MARKER_RE.lastIndex = 0;
+    while ((m = MARKER_RE.exec(line))) {
+      let nc, nv;
+      if (m[2]) {                                  // explicit 1:1
+        nc = +m[2]; nv = +m[3];
+        if (m[1] && !/^(and|the|then|but|for|in|chapter)$/i.test(m[1])) setBook(m[1]);
+      } else {                                     // plain number
+        const n = +m[4];
+        const atStart = m.index === 0;
+        const before = line.slice(0, m.index);
+        const afterSentence = /[.!?"'”’)\]]\s*$/.test(before);
+        // mid-line, a verse number follows punctuation or starts a capitalised
+        // word, so "and 3 days" is not taken as verse 3
+        const looksLikeVerse = atStart || /[.,;:!?"'”’)\]]\s*$/.test(before) ||
+          /^[ \u00a0]?["'“‘(\[]?[A-Z]/.test(line.slice(m.index + m[4].length));
+        if (n === v + 1 && looksLikeVerse) { nc = c; nv = n; }
+        else if (atStart && n > v && (v === 0 || n <= v + 3)) { nc = c; nv = n; }
+        else if (n === 1 && v > 1 && (atStart || afterSentence)) { nc = c + 1; nv = 1; }
+        else continue;
+      }
+      add(line.slice(last, m.index));
+      start(nc, nv);
+      last = m.index + m[0].length;
+    }
+    add(line.slice(last));
+  });
+  return { verses, books };
+}
+
+function parseLines(text) {
+  // Blank lines separate paragraphs; if there are none, each line is a row.
+  const t = text.trim();
+  if (!t) return [];
+  const parts = /\n\s*\n/.test(t) ? t.split(/\n\s*\n/) : t.split(/\n/);
+  return parts.map(p => p.replace(/\s+/g, ' ').trim()).filter(Boolean);
+}
+
+// ---------------------------------------------------------------------------
+// Rendering
+// ---------------------------------------------------------------------------
+
+const $ = id => document.getElementById(id);
+const esc = s => s.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+const fmt = n => n.toLocaleString();
+
+function cell(text) {
+  return text ? '<td>' + esc(text) + '</td>' : '<td class="missing">—</td>';
+}
+
+function header() {
+  const l = esc($('titleL').value.trim() || 'Left');
+  const r = esc($('titleR').value.trim() || 'Right');
+  return '<thead><tr><th class="ref"></th><th>' + l + '</th><th>' + r + '</th></tr></thead>';
+}
+
+function renderVerses(L, R) {
+  const keys = new Set([...L.verses.keys(), ...R.verses.keys()]);
+  const sorted = [...keys].map(k => k.split('|').map(Number)).sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
+
+  let html = '', prevChapter = null, missing = 0;
+  for (const [b, c, v] of sorted) {
+    const key = b + '|' + c + '|' + v;
+    if (b + '|' + c !== prevChapter) {
+      const book = L.books[b] || R.books[b];
+      html += '<tr class="chapter"><td colspan="3">' + esc(book ? book + ' ' + c : 'Chapter ' + c) + '</td></tr>';
+      prevChapter = b + '|' + c;
+    }
+    const l = L.verses.get(key), r = R.verses.get(key);
+    if (!l || !r) missing++;
+    html += '<tr><td class="ref">' + c + ':' + v + '</td>' + cell(l && l.text) + cell(r && r.text) + '</tr>';
+  }
+  return { html, rows: sorted.length, missing };
+}
+
+function renderLines(L, R) {
+  const n = Math.max(L.length, R.length);
+  let html = '';
+  for (let i = 0; i < n; i++) {
+    html += '<tr><td class="ref">' + (i + 1) + '</td>' + cell(L[i]) + cell(R[i]) + '</tr>';
+  }
+  return { html, rows: n, missing: Math.abs(L.length - R.length) };
+}
+
+function render() {
+  const tL = $('textL').value, tR = $('textR').value;
+  const mode = $('mode').value;
+  const status = $('status');
+  $('printTitle').textContent = $('docTitle').value.trim();
+  document.title = $('docTitle').value.trim() || 'Bible Side by Side';
+
+  if (!tL.trim() && !tR.trim()) {
+    $('out').innerHTML = '<p class="empty no-print">Paste text into both boxes and the side-by-side view appears here.</p>';
+    $('countL').textContent = $('countR').textContent = status.textContent = '';
+    return;
+  }
+
+  let result, label;
+  if (mode === 'verse') {
+    const L = parseVerses(tL), R = parseVerses(tR);
+    $('countL').textContent = tL.trim() ? fmt(L.verses.size) + ' verses found' : '';
+    $('countR').textContent = tR.trim() ? fmt(R.verses.size) + ' verses found' : '';
+    result = renderVerses(L, R);
+    label = 'verses';
+    if ((tL.trim() && L.verses.size === 0) || (tR.trim() && R.verses.size === 0)) {
+      status.innerHTML = '<span class="warn">No verse numbers were found in one of the texts. Try “Line up by: Line / paragraph”.</span>';
+    }
+  } else {
+    const L = parseLines(tL), R = parseLines(tR);
+    $('countL').textContent = tL.trim() ? fmt(L.length) + ' lines' : '';
+    $('countR').textContent = tR.trim() ? fmt(R.length) + ' lines' : '';
+    result = renderLines(L, R);
+    label = 'rows';
+  }
+
+  $('out').innerHTML = '<table class="parallel' + ($('showRefs').checked ? '' : ' no-refs') + '">' +
+    '<colgroup><col class="ref"><col><col></colgroup>' + header() + '<tbody>' + result.html + '</tbody></table>';
+
+  if (!status.querySelector('.warn') || mode !== 'verse' || result.rows) {
+    status.innerHTML = fmt(result.rows) + ' ' + label + ' side by side' + (result.missing
+      ? ' · <span class="warn">' + fmt(result.missing) + ' only in one version (shaded)</span>'
+      : ' · everything matched');
+  }
+}
+
+function applyPageStyle() {
+  document.documentElement.style.setProperty('--fs', $('fontSize').value + 'pt');
+  $('page-style').textContent = '@page { size: ' + $('paper').value + ' ' + $('orient').value + '; margin: 14mm 12mm 16mm; }';
+}
+
+// ---------------------------------------------------------------------------
+// Remember what was typed (this browser only; nothing is sent anywhere)
+// ---------------------------------------------------------------------------
+
+const FIELDS = ['docTitle', 'titleL', 'titleR', 'textL', 'textR', 'mode', 'showRefs', 'fontSize', 'paper', 'orient'];
+function save() {
+  for (const id of FIELDS) {
+    const el = $(id);
+    try { localStorage.setItem('bsbs.' + id, el.type === 'checkbox' ? String(el.checked) : el.value); } catch (e) {}
+  }
+}
+function load() {
+  for (const id of FIELDS) {
+    let v = null;
+    try { v = localStorage.getItem('bsbs.' + id); } catch (e) {}
+    if (v === null) continue;
+    const el = $(id);
+    if (el.type === 'checkbox') el.checked = v === 'true'; else el.value = v;
+  }
+}
+
+let timer;
+function scheduleRender() {
+  clearTimeout(timer);
+  timer = setTimeout(() => { render(); save(); }, 300);
+}
+
+for (const id of FIELDS) {
+  $(id).addEventListener('input', () => { applyPageStyle(); scheduleRender(); });
+}
+
+$('exportPdf').addEventListener('click', () => { render(); window.print(); });
+
+$('sample').addEventListener('click', () => {
+  $('docTitle').value = 'Genesis — KJV and WEB';
+  $('titleL').value = 'King James Version';
+  $('titleR').value = 'World English Bible';
+  $('textL').value = `Genesis 1
+1 In the beginning God created the heaven and the earth.
+2 And the earth was without form, and void; and darkness was upon the face of the deep. And the Spirit of God moved upon the face of the waters.
+3 And God said, Let there be light: and there was light.
+4 And God saw the light, that it was good: and God divided the light from the darkness.
+5 And God called the light Day, and the darkness he called Night. And the evening and the morning were the first day.
+
+Genesis 2
+1 Thus the heavens and the earth were finished, and all the host of them.`;
+  $('textR').value = `Genesis 1
+1 In the beginning, God created the heavens and the earth. 2 The earth was formless and empty. Darkness was on the surface of the deep and God’s Spirit was hovering over the surface of the waters. 3 God said, “Let there be light,” and there was light. 4 God saw the light, and saw that it was good. God divided the light from the darkness. 5 God called the light “day”, and the darkness he called “night”. There was evening and there was morning, the first day.
+
+Genesis 2
+1 The heavens, the earth, and all their vast array were finished.`;
+  render(); save();
+});
+
+load();
+applyPageStyle();
+render();
+</script>
+</body>
+</html>
