@@ -164,7 +164,7 @@ table.parallel.no-refs td.ref, table.parallel.no-refs th.ref { padding: 0; font-
       <label>Writing space
         <select id="notes">
           <option value="none">None</option>
-          <option value="margins">Blank margins left and right</option>
+          <option value="margins" selected>Blank margins left and right</option>
           <option value="column">Notes column on the right</option>
         </select>
       </label>
@@ -177,12 +177,12 @@ table.parallel.no-refs td.ref, table.parallel.no-refs th.ref { padding: 0; font-
       </label>
       <label id="ruledLabel"><input type="checkbox" id="ruled"> Ruled notes column</label>
       <label><input type="checkbox" id="spaceUnder"> Space under each verse</label>
-      <label><input type="checkbox" id="lines" checked> Lines between verses</label>
+      <label><input type="checkbox" id="lines"> Lines between verses</label>
       <label>Paper
         <select id="paper"><option value="letter">Letter</option><option value="A4">A4</option><option value="ipad">iPad (fills the screen)</option></select>
       </label>
       <label>Orientation
-        <select id="orient"><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select>
+        <select id="orient"><option value="portrait">Portrait</option><option value="landscape" selected>Landscape</option></select>
       </label>
       <span class="spacer"></span>
       <button id="sample" type="button">Try a sample</button>
@@ -648,6 +648,15 @@ async function start() {
   if (!$('book').value) $('book').value = '1';
   fillChapters();
   load(FIELDS.filter(id => !['srcL', 'srcR', 'book'].includes(id)));
+  // Layout 2 (blank margins both sides, no lines, landscape) replaces whatever
+  // layout was saved before it existed; after that, the viewer's choice sticks
+  let layout = null;
+  try { layout = localStorage.getItem('bsbs.layout'); } catch (e) {}
+  if (layout !== '2') {
+    $('notes').value = 'margins'; $('marginWidth').value = '33.33';
+    $('lines').checked = false; $('orient').value = 'landscape';
+    try { localStorage.setItem('bsbs.layout', '2'); localStorage.removeItem('bsbs.notes'); } catch (e) {}
+  }
   // Older versions had "space" and "both" in the notes menu
   let oldNotes = null;
   try { oldNotes = localStorage.getItem('bsbs.notes'); } catch (e) {}
