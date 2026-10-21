@@ -382,6 +382,22 @@ const BOOKS = ['Genesis', 'Exodus', 'Leviticus', 'Numbers', 'Deuteronomy', 'Josh
   '1 Thessalonians', '2 Thessalonians', '1 Timothy', '2 Timothy', 'Titus', 'Philemon', 'Hebrews', 'James',
   '1 Peter', '2 Peter', '1 John', '2 John', '3 John', 'Jude', 'Revelation'];
 
+const BOOKS_ES = ['Génesis', 'Éxodo', 'Levítico', 'Números', 'Deuteronomio', 'Josué', 'Jueces', 'Rut',
+  '1 Samuel', '2 Samuel', '1 Reyes', '2 Reyes', '1 Crónicas', '2 Crónicas', 'Esdras', 'Nehemías', 'Ester',
+  'Job', 'Salmos', 'Proverbios', 'Eclesiastés', 'Cantares', 'Isaías', 'Jeremías', 'Lamentaciones',
+  'Ezequiel', 'Daniel', 'Oseas', 'Joel', 'Amós', 'Abdías', 'Jonás', 'Miqueas', 'Nahúm', 'Habacuc',
+  'Sofonías', 'Hageo', 'Zacarías', 'Malaquías', 'Mateo', 'Marcos', 'Lucas', 'Juan', 'Hechos', 'Romanos',
+  '1 Corintios', '2 Corintios', 'Gálatas', 'Efesios', 'Filipenses', 'Colosenses',
+  '1 Tesalonicenses', '2 Tesalonicenses', '1 Timoteo', '2 Timoteo', 'Tito', 'Filemón', 'Hebreos', 'Santiago',
+  '1 Pedro', '2 Pedro', '1 Juan', '2 Juan', '3 Juan', 'Judas', 'Apocalipsis'];
+
+// Book names and titles follow the language of the left-hand version
+function spanish() {
+  const v = versionOf($('srcL').value) || versionOf($('srcR').value);
+  return !!v && v.lang.startsWith('Español');
+}
+const bookName = n => (spanish() ? BOOKS_ES : BOOKS)[n - 1];
+
 let versions = [];                 // from data/versions.json
 const bookCache = new Map();       // "kjv/43" -> promise of [[verse, …], …]
 
@@ -423,7 +439,7 @@ function splitParts(L, R) {
   let cur = null;
   for (const b of [...perBook.keys()].sort((x, y) => x - y)) {
     const n = perBook.get(b);
-    const newTestament = (L.books[b] || R.books[b]) === 'Matthew' && cur;   // keep the testaments apart
+    const newTestament = ['Matthew', 'Mateo'].includes(L.books[b] || R.books[b]) && cur;   // keep the testaments apart
     if (!cur || cur.count + n > PART_VERSES || newTestament) parts.push(cur = { books: new Set(), count: 0, first: b, last: b });
     cur.books.add(b); cur.count += n; cur.last = b;
   }
@@ -458,7 +474,7 @@ async function libraryPassage(vid, onProgress) {
       });
     }
   });
-  return { verses, books: sel.books.map(n => BOOKS[n - 1]) };
+  return { verses, books: sel.books.map(bookName) };
 }
 
 const versionOf = id => versions.find(v => v.id === id);
@@ -475,9 +491,11 @@ function fillChapters() {
 }
 
 function passageLabel() {
-  const range = $('range').value, book = BOOKS[+$('book').value - 1], from = $('chFrom').value, to = $('chTo').value;
+  const range = $('range').value, book = bookName(+$('book').value), from = $('chFrom').value, to = $('chTo').value;
   if (range === 'book') return book;
-  if (range !== 'chapters') return { ot: 'Old Testament', nt: 'New Testament', bible: 'The Bible' }[range];
+  if (range !== 'chapters') return (spanish()
+    ? { ot: 'Antiguo Testamento', nt: 'Nuevo Testamento', bible: 'La Biblia' }
+    : { ot: 'Old Testament', nt: 'New Testament', bible: 'The Bible' })[range];
   return book + ' ' + (from === to ? from : from + '–' + to);
 }
 
@@ -548,6 +566,7 @@ function updateSides() {
     $('title' + side).placeholder = v ? 'Column title (default: ' + v.name + ')' : 'Column title, e.g. ' + (side === 'L' ? 'NIV' : 'ESV');
   }
   $('passage').hidden = !anyLibrary;
+  [...$('book').options].forEach((o, i) => { o.textContent = bookName(i + 1); });
   const range = $('range').value;
   $('bookLabel').hidden = !['chapters', 'book'].includes(range);
   $('chFromLabel').hidden = $('chToLabel').hidden = range !== 'chapters';
@@ -612,7 +631,7 @@ async function render() {
       const part = parts[+$('part').value];
       L = onlyBooks(L, part); R = onlyBooks(R, part);
       const t = $('docTitle').value.trim() || passageLabel();
-      const label = t + ' — Part ' + (+$('part').value + 1) + ' of ' + parts.length;
+      const label = t + (spanish() ? ' — Parte ' : ' — Part ') + (+$('part').value + 1) + (spanish() ? ' de ' : ' of ') + parts.length;
       $('printTitle').textContent = label + ' (' + part.label + ')';
       document.title = label;
     }
