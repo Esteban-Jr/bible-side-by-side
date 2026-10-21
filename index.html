@@ -143,9 +143,19 @@ table.parallel.no-refs td.ref, table.parallel.no-refs th.ref { padding: 0; font-
     </div>
 
     <div class="passage" id="passage" hidden>
-      <label>Book <select id="book"></select></label>
-      <label>Chapters <select id="chFrom"></select></label>
-      <label>to <select id="chTo"></select></label>
+      <label>Passage
+        <select id="range">
+          <option value="chapters">Chapters</option>
+          <option value="book">Whole book</option>
+          <option value="ot">Old Testament</option>
+          <option value="nt">New Testament</option>
+          <option value="bible">Whole Bible</option>
+        </select>
+      </label>
+      <label id="bookLabel">Book <select id="book"></select></label>
+      <label id="chFromLabel">Chapters <select id="chFrom"></select></label>
+      <label id="chToLabel">to <select id="chTo"></select></label>
+      <label id="partLabel" hidden>Part <select id="part"></select></label>
     </div>
 
     <div class="toolbar">
@@ -389,16 +399,66 @@ function loadBook(vid, book) {
 }
 
 // Same shape as parseVerses() so pasted and library text line up the same way
-async function libraryPassage(vid) {
-  const book = +$('book').value, from = +$('chFrom').value, to = +$('chTo').value;
-  const chapters = await loadBook(vid, book);
-  const verses = new Map();
-  for (let c = from; c <= to; c++) {
-    (chapters[c - 1] || []).forEach((text, i) => {
-      if (text) verses.set('0|' + c + '|' + (i + 1), { b: 0, c, v: i + 1, text });
-    });
+// The books (1–66) and, for "Chapters", the chapter range that are selected
+function selection() {
+  const range = $('range').value, book = +$('book').value;
+  if (range === 'chapters') return { books: [book], from: +$('chFrom').value, to: +$('chTo').value };
+  const span = range === 'book' ? [book, book] : range === 'ot' ? [1, 39] : range === 'nt' ? [40, 66] : [1, 66];
+  return { books: Array.from({ length: span[1] - span[0] + 1 }, (_, i) => span[0] + i), from: 1, to: Infinity };
+}
+
+// A PDF of more than ~2,500 pages fails to print, so the Old Testament and the
+// whole Bible are split at book boundaries into parts of at most 5,000 verses
+// (Genesis, 1,533 verses, is about 500 pages with ⅓ margins in landscape).
+const PART_VERSES = 5000;
+
+function splitParts(L, R) {
+  const perBook = new Map();
+  for (const P of [L, R]) {
+    const counts = new Map();
+    for (const x of P.verses.values()) counts.set(x.b, (counts.get(x.b) || 0) + 1);
+    for (const [b, n] of counts) perBook.set(b, Math.max(perBook.get(b) || 0, n));
   }
-  return { verses, books: [BOOKS[book - 1]] };
+  const parts = [];
+  let cur = null;
+  for (const b of [...perBook.keys()].sort((x, y) => x - y)) {
+    const n = perBook.get(b);
+    const newTestament = (L.books[b] || R.books[b]) === 'Matthew' && cur;   // keep the testaments apart
+    if (!cur || cur.count + n > PART_VERSES || newTestament) parts.push(cur = { books: new Set(), count: 0, first: b, last: b });
+    cur.books.add(b); cur.count += n; cur.last = b;
+  }
+  const name = b => L.books[b] || R.books[b] || 'Book ' + (b + 1);
+  for (const p of parts) p.label = p.first === p.last ? name(p.first) : name(p.first) + '–' + name(p.last);
+  return parts;
+}
+
+function fillParts(parts) {
+  const sel = $('part');
+  $('partLabel').hidden = parts.length < 2;
+  if (parts.length < 2) return;
+  const keep = Math.min(+sel.value || 0, parts.length - 1);
+  sel.innerHTML = parts.map((p, i) => '<option value="' + i + '">' + (i + 1) + ' of ' + parts.length + ': ' + esc(p.label) + '</option>').join('');
+  sel.value = String(keep);
+}
+
+const onlyBooks = (P, part) => ({ ...P, verses: new Map([...P.verses].filter(([, x]) => part.books.has(x.b))) });
+
+// Each selected book gets its own index (0, 1, 2…), matching the order books
+// appear in pasted text
+async function libraryPassage(vid, onProgress) {
+  const sel = selection();
+  let done = 0;
+  const all = await Promise.all(sel.books.map(n => loadBook(vid, n).then(ch => { onProgress && onProgress(++done); return ch; })));
+  const verses = new Map();
+  all.forEach((chapters, b) => {
+    const to = Math.min(sel.to, chapters.length);
+    for (let c = sel.from; c <= to; c++) {
+      (chapters[c - 1] || []).forEach((text, i) => {
+        if (text) verses.set(b + '|' + c + '|' + (i + 1), { b, c, v: i + 1, text });
+      });
+    }
+  });
+  return { verses, books: sel.books.map(n => BOOKS[n - 1]) };
 }
 
 const versionOf = id => versions.find(v => v.id === id);
@@ -415,7 +475,9 @@ function fillChapters() {
 }
 
 function passageLabel() {
-  const book = BOOKS[+$('book').value - 1], from = $('chFrom').value, to = $('chTo').value;
+  const range = $('range').value, book = BOOKS[+$('book').value - 1], from = $('chFrom').value, to = $('chTo').value;
+  if (range === 'book') return book;
+  if (range !== 'chapters') return { ot: 'Old Testament', nt: 'New Testament', bible: 'The Bible' }[range];
   return book + ' ' + (from === to ? from : from + '–' + to);
 }
 
@@ -486,6 +548,9 @@ function updateSides() {
     $('title' + side).placeholder = v ? 'Column title (default: ' + v.name + ')' : 'Column title, e.g. ' + (side === 'L' ? 'NIV' : 'ESV');
   }
   $('passage').hidden = !anyLibrary;
+  const range = $('range').value;
+  $('bookLabel').hidden = !['chapters', 'book'].includes(range);
+  $('chFromLabel').hidden = $('chToLabel').hidden = range !== 'chapters';
   $('mode').disabled = anyLibrary;   // library text always lines up by verse
   $('ruledLabel').hidden = $('notes').value !== 'column';
   $('marginWidthLabel').hidden = $('notes').value !== 'margins';
@@ -520,10 +585,13 @@ async function render() {
   if (mode === 'verse') {
     let L, R;
     try {
+      const total = selection().books.length * ((libL ? 1 : 0) + (libR ? 1 : 0));
+      let loaded = 0;
+      const progress = () => { if (id === renderId && total > 2) status.textContent = 'Loading ' + passageLabel() + '… ' + Math.round(100 * ++loaded / total) + '%'; };
       if (libL || libR) status.textContent = 'Loading ' + passageLabel() + '…';
       [L, R] = await Promise.all([
-        libL ? libraryPassage(libL.id) : parseVerses(tL),
-        libR ? libraryPassage(libR.id) : parseVerses(tR),
+        libL ? libraryPassage(libL.id, progress) : parseVerses(tL),
+        libR ? libraryPassage(libR.id, progress) : parseVerses(tR),
       ]);
     } catch (e) {
       if (id === renderId) status.innerHTML = '<span class="warn">Couldn’t load the Bible text (' + esc(e.message) + '). Check your connection and try again.</span>';
@@ -533,9 +601,20 @@ async function render() {
     detected.L = libL ? '' : L.version;
     detected.R = libR ? '' : R.version;
     if (libL || libR) {
-      const from = +$('chFrom').value;
+      const from = selection().from;
       if (!libL) L = shiftChapters(L, from);
       if (!libR) R = shiftChapters(R, from);
+    }
+    // Very long selections are split into parts so each PDF can be printed
+    const parts = splitParts(L, R);
+    fillParts(parts);
+    if (parts.length > 1) {
+      const part = parts[+$('part').value];
+      L = onlyBooks(L, part); R = onlyBooks(R, part);
+      const t = $('docTitle').value.trim() || passageLabel();
+      const label = t + ' — Part ' + (+$('part').value + 1) + ' of ' + parts.length;
+      $('printTitle').textContent = label + ' (' + part.label + ')';
+      document.title = label;
     }
     $('countL').textContent = hasL ? fmt(L.verses.size) + ' verses' + (libL ? '' : ' found') : '';
     $('countR').textContent = hasR ? fmt(R.verses.size) + ' verses' + (libR ? '' : ' found') : '';
@@ -579,7 +658,7 @@ function applyPageStyle() {
 // Remember what was typed (this browser only; nothing is sent anywhere)
 // ---------------------------------------------------------------------------
 
-const FIELDS = ['docTitle', 'srcL', 'srcR', 'titleL', 'titleR', 'textL', 'textR', 'book', 'chFrom', 'chTo',
+const FIELDS = ['docTitle', 'srcL', 'srcR', 'titleL', 'titleR', 'textL', 'textR', 'range', 'book', 'chFrom', 'chTo',
   'mode', 'showRefs', 'fontSize', 'notes', 'marginWidth', 'ruled', 'spaceUnder', 'lines', 'paper', 'orient'];
 function save() {
   for (const id of FIELDS) {
@@ -598,9 +677,11 @@ function load(ids) {
 }
 
 let timer;
+let pending = false;   // settings changed since the last render
 function scheduleRender() {
+  pending = true;
   clearTimeout(timer);
-  timer = setTimeout(() => { render(); save(); }, 300);
+  timer = setTimeout(() => { pending = false; render(); save(); }, 300);
 }
 
 for (const id of FIELDS) {
@@ -613,7 +694,13 @@ for (const id of FIELDS) {
   });
 }
 
-$('exportPdf').addEventListener('click', async () => { await render(); window.print(); });
+$('part').addEventListener('input', scheduleRender);
+$('range').addEventListener('input', () => { $('part').value = '0'; });
+
+$('exportPdf').addEventListener('click', async () => {
+  if (pending) { clearTimeout(timer); pending = false; save(); await render(); }
+  window.print();
+});
 
 $('sample').addEventListener('click', () => {
   $('docTitle').value = '';
